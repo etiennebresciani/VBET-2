@@ -238,6 +238,7 @@ class VBET:
             arr = src.read()[0, :, :]
             res_x = src.res[0]
             res_y = src.res[1]
+            res = 0.5*np.sqrt(res_x**2+res_y**2)
             x_min = src.transform[2]
             y_max = src.transform[5]
             y_min = y_max - (src.height*res_y)
@@ -250,7 +251,7 @@ class VBET:
 
         for i in range(len(_xs)):
             pt = Point(_xs[i], _ys[i])
-            buf = pt.buffer(5)
+            buf = pt.buffer(res)
             zonal = zonal_stats(buf, dem, stats='min')
             val = zonal[0].get('min')
 
