@@ -304,9 +304,9 @@ class VBET:
             for i in range(0, cols - 1):
                 if array[j, i] == ndval:
                     out_array[j, i] = ndval
-                elif array[j, i] > thresh:
+                elif np.abs(array[j, i]) > thresh:
                     out_array[j, i] = ndval
-                elif thresh >= array[j, i] > 0:
+                elif thresh >= np.abs(array[j, i]) >= 0:
                     out_array[j, i] = 1
                 else:
                     array[j, i] = ndval
