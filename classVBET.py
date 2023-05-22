@@ -187,6 +187,11 @@ class VBET:
         """
         print('Adding drainage area to network')
         da_list = []
+        
+        with rasterio.open(self.dr_area) as src:
+            res_x = src.res[0]
+            res_y = src.res[1]
+            res = 0.5*np.sqrt(res_x**2+res_y**2)
 
         for i in self.network.index:
             seg = self.network.loc[i]
@@ -196,7 +201,7 @@ class VBET:
             mid_pt_y = geom.coords.xy[1][pos]
 
             pt = Point(mid_pt_x, mid_pt_y)
-            buf = pt.buffer(50)  # make buffer distance function of resolution (e.g. 5*res)
+            buf = pt.buffer(5*res)
 
             zs = zonal_stats(buf, self.dr_area, stats='max')
             da_val = zs[0].get('max')
