@@ -470,6 +470,9 @@ class VBET:
             with rasterio.open(self.dem) as src:
                 out_image, out_transform = rasterio.mask.mask(src, coords, crop=True)
                 out_meta = src.meta.copy()
+                res_x = src.res[0]
+                res_y = src.res[1]
+                pixel_area = res_x*res_y
 
             out_meta.update({'driver': 'Gtiff',
                              'height': out_image.shape[1],
@@ -495,11 +498,11 @@ class VBET:
             # set thresholds for hole filling
             avlen = int(self.seglengths / len(self.network))
             if da < self.med_da:
-                thresh = avlen * self.sm_buf * 0.005
+                thresh = avlen * self.sm_buf * 0.005 / pixel_area
             elif self.med_da <= da < self.lg_da:
-                thresh = avlen * self.med_buf * 0.005
+                thresh = avlen * self.med_buf * 0.005 / pixel_area
             else:  # da >= self.lg_da:
-                thresh = avlen * self.lg_buf * 0.005
+                thresh = avlen * self.lg_buf * 0.005 / pixel_area
 
             # detrend segment dem
             detr = self.detrend(dem, seg_geom)  # might want to change this offset
