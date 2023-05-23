@@ -201,7 +201,7 @@ class VBET:
             mid_pt_y = geom.coords.xy[1][pos]
 
             pt = Point(mid_pt_x, mid_pt_y)
-            buf = pt.buffer(5*res)
+            buf = pt.buffer(10*res)
 
             zs = zonal_stats(buf, self.dr_area, stats='max')
             da_val = zs[0].get('max')
