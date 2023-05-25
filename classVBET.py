@@ -256,7 +256,7 @@ class VBET:
 
         for i in range(len(_xs)):
             pt = Point(_xs[i], _ys[i])
-            buf = pt.buffer(res)
+            buf = pt.buffer(5*res)
             zonal = zonal_stats(buf, dem, stats='min')
             val = zonal[0].get('min')
 
