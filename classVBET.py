@@ -540,35 +540,42 @@ class VBET:
         vbc.to_file(self.scratch + "/tempvb.shp")
         del vbc
 
-        # get rid of small unattached polygons
-        self.network.to_file(self.scratch + "/dissnetwork.shp")
-        network2 = gpd.read_file(self.scratch + "/dissnetwork.shp")
-        network2['dissolve'] = 1
-        network2 = network2.dissolve('dissolve')
+        # multipart to single part
         vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
         vbm2s = vb1.explode(ignore_index=True)
-        print('Removing valley bottom features that do not intersect stream network')
-        print('Started with {} valley bottom features'.format(len(vbm2s)))
+        vbm2s.to_file(self.scratch + "/tempvb.shp")
         del vb1
-        sub = []
-        for i in vbm2s.index:
-            segs = 0
-            for j in network2.index:
-                if network2.loc[j].geometry.intersects(vbm2s.loc[i].geometry):
-                    segs += 1
-            if segs > 0:
-                sub.append(True)
-            else:
-                sub.append(False)
 
-        vbcut = vbm2s[sub].reset_index(drop=True)
-        print('Cleaned to {} valley bottom features'.format(len(vbcut)))
+        # get rid of polygons that do not intersect stream network
+        remove_no_intersect = False
+        if remove_no_intersect:
+            self.network.to_file(self.scratch + "/dissnetwork.shp")
+            network2 = gpd.read_file(self.scratch + "/dissnetwork.shp")
+            network2['dissolve'] = 1
+            network2 = network2.dissolve('dissolve')            
+            print('Removing valley bottom features that do not intersect stream network')
+            print('Started with {} valley bottom features'.format(len(vbm2s)))
+            sub = []
+            for i in vbm2s.index:
+                segs = 0
+                for j in network2.index:
+                    if network2.loc[j].geometry.intersects(vbm2s.loc[i].geometry):
+                        segs += 1
+                if segs > 0:
+                    sub.append(True)
+                else:
+                    sub.append(False)
+
+            vb2 = vbm2s[sub].reset_index(drop=True)
+            vb2.to_file(self.scratch + "/tempvb.shp")
+            print('Cleaned to {} valley bottom features'.format(len(vb2)))
+        else:
+            vb2 = vbm2s
         del vbm2s
-        vbcut.to_file(self.scratch + "/tempvb.shp")
 
         polys = []
-        for i in vbcut.index:
-            coords = list(vbcut.loc[i].geometry.exterior.coords)  # vbcut WAS vbc when using shapely simplify.
+        for i in vb2.index:
+            coords = list(vb2.loc[i].geometry.exterior.coords)  # vb2 WAS vbc when using shapely simplify.
             new_coords = self.chaikins_corner_cutting(coords)
             polys.append(Polygon(new_coords))
 
