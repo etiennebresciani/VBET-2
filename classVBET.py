@@ -287,14 +287,14 @@ class VBET:
         A = np.array(tmp_A)
         fit = lstsq(A, b)
 
-        trend = np.full((src.height, src.width), src.nodata)
-        for j in range(trend.shape[0]):
-            for i in range(trend.shape[1]):
-                trend[j, i] = fit[0][0] * i + fit[0][1] * j + fit[0][2]
+        ii = range(src.width)
+        jj = range(src.height)
+        igrid, jgrid = np.meshgrid(ii, jj)
+        trend = fit[0][0] * igrid + fit[0][1] * jgrid + fit[0][2]
 
         out_arr = arr - trend
 
-        out_arr[arr==src.nodata] = src.nodata
+        out_arr[arr == src.nodata] = src.nodata
 
         return out_arr
 
@@ -303,24 +303,12 @@ class VBET:
         Splits an input array into two values: 1 and NODATA based on a threshold value
         :param array: a 2-D array
         :param ndval: NoData value
-        :param thresh: The threshold value. Values < thresh are converted to 1
+        :param thresh: The threshold value. Values <= thresh are converted to 1
         and values > thresh are converted to NoData
         :return: a 2-D array of with values of 1 and NoData
         """
-        rows, cols = array.shape
-
         out_array = np.full(array.shape, ndval)
-
-        for j in range(rows):
-            for i in range(cols):
-                if array[j, i] == ndval:
-                    out_array[j, i] = ndval
-                elif np.abs(array[j, i]) > thresh:
-                    out_array[j, i] = ndval
-                elif thresh >= np.abs(array[j, i]) >= 0:
-                    out_array[j, i] = 1
-                else:
-                    array[j, i] = ndval
+        out_array[np.abs(array) <= thresh] = 1
 
         return out_array
 
@@ -339,13 +327,7 @@ class VBET:
             raise Exception('rasters are not same size')
 
         out_array = np.full(array1.shape, ndval)
-
-        for j in range(array1.shape[0]):
-            for i in range(array1.shape[1]):
-                if array1[j, i] == 1. and array2[j, i] == 1.:
-                    out_array[j, i] = 1.
-                else:
-                    out_array[j, i] = ndval
+        out_array[np.logical_and(array1 == 1, array2 == 1)] = 1
 
         return out_array
 
@@ -358,20 +340,14 @@ class VBET:
         :return: 2-D array like input array but with holes filled
         """
         binary = np.zeros_like(array, dtype=bool)
-        for j in range(array.shape[0]):
-            for i in range(array.shape[1]):
-                if array[j, i] == 1:
-                    binary[j, i] = 1
+        binary[array == 1] = True
 
         b = mo.remove_small_holes(binary, thresh, 1)
         c = mo.binary_closing(b, footprint=np.ones((7, 7)))
         d = mo.remove_small_holes(c, thresh, 1)
 
         out_array = np.full(d.shape, ndval, dtype=np.float32)
-        for j in range(d.shape[0]):
-            for i in range(d.shape[1]):
-                if d[j, i] == True:
-                    out_array[j, i] = 1.
+        out_array[d] = 1
 
         return out_array
 
