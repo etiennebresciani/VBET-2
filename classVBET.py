@@ -311,8 +311,8 @@ class VBET:
 
         out_array = np.full(array.shape, ndval)
 
-        for j in range(0, rows - 1):
-            for i in range(0, cols - 1):
+        for j in range(rows):
+            for i in range(cols):
                 if array[j, i] == ndval:
                     out_array[j, i] = ndval
                 elif np.abs(array[j, i]) > thresh:
@@ -340,8 +340,8 @@ class VBET:
 
         out_array = np.full(array1.shape, ndval)
 
-        for j in range(0, array1.shape[0] - 1):
-            for i in range(0, array1.shape[1] - 1):
+        for j in range(array1.shape[0]):
+            for i in range(array1.shape[1]):
                 if array1[j, i] == 1. and array2[j, i] == 1.:
                     out_array[j, i] = 1.
                 else:
@@ -358,8 +358,8 @@ class VBET:
         :return: 2-D array like input array but with holes filled
         """
         binary = np.zeros_like(array, dtype=bool)
-        for j in range(0, array.shape[0] - 1):
-            for i in range(0, array.shape[1] - 1):
+        for j in range(array.shape[0]):
+            for i in range(array.shape[1]):
                 if array[j, i] == 1:
                     binary[j, i] = 1
 
@@ -368,8 +368,8 @@ class VBET:
         d = mo.remove_small_holes(c, thresh, 1)
 
         out_array = np.full(d.shape, ndval, dtype=np.float32)
-        for j in range(0, d.shape[0] - 1):
-            for i in range(0, d.shape[1] - 1):
+        for j in range(d.shape[0]):
+            for i in range(d.shape[1]):
                 if d[j, i] == True:
                     out_array[j, i] = 1.
 
