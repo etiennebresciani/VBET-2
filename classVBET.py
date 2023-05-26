@@ -255,23 +255,18 @@ class VBET:
         _xs = seg_geom.xy[0][::2]
         _ys = seg_geom.xy[1][::2]
 
-        zs = np.zeros_like(_xs)
+        # transform in local coords
+        xs = np.array(_xs) - x_min
+        ys = y_max - np.array(_ys)
 
+        # get min elevation within buffer
+        zs = np.zeros_like(_xs)
         for i in range(len(_xs)):
             pt = Point(_xs[i], _ys[i])
             buf = pt.buffer(5*res)
             zonal = zonal_stats(buf, dem, stats='min')
             val = zonal[0].get('min')
-
             zs[i] = val
-
-        # points in array coords
-        xs = np.zeros_like(_xs)
-        ys = np.zeros_like(_ys)
-
-        for i in range(len(_xs)):
-            xs[i] = int((_xs[i] - x_min) / res_x)  # column in array space
-            ys[i] = int((y_max - _ys[i]) / res_y)  # row in array space
 
         xs = xs[np.isfinite(zs)]
         ys = ys[np.isfinite(zs)]
@@ -287,10 +282,10 @@ class VBET:
         A = np.array(tmp_A)
         fit = lstsq(A, b)
 
-        ii = range(src.width)
-        jj = range(src.height)
-        igrid, jgrid = np.meshgrid(ii, jj)
-        trend = fit[0][0] * igrid + fit[0][1] * jgrid + fit[0][2]
+        xrow = (0.5 + np.arange(src.width)) * res_x
+        ycol = (0.5 + np.arange(src.height)) * res_y
+        xgrid, ygrid = np.meshgrid(xrow, ycol)
+        trend = fit[0][0] * xgrid + fit[0][1] * ygrid + fit[0][2]
 
         out_arr = arr - trend
 
