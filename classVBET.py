@@ -222,6 +222,9 @@ class VBET:
             arr = src.read()[0, :, :]
             xres = src.res[0]
             yres = src.res[1]
+            if not arr.dtype == float:
+                arr = arr.astype(float)
+            arr[arr==src.nodata] = np.nan
 
         x = np.array([[-1 / (8 * xres), 0, 1 / (8 * xres)],
                       [-2 / (8 * xres), 0, 2 / (8 * xres)],
@@ -233,6 +236,7 @@ class VBET:
         x_grad = convolve2d(arr, x, mode='same', boundary='fill', fillvalue=1)
         y_grad = convolve2d(arr, y, mode='same', boundary='fill', fillvalue=1)
         slope = np.arctan(np.sqrt(x_grad ** 2 + y_grad ** 2)) * (180. / np.pi)
+        slope[np.isnan(slope)] = src.nodata
         slope = slope.astype(src.dtypes[0])
 
         return slope
@@ -290,6 +294,8 @@ class VBET:
                 trend[j, i] = fit[0][0] * i + fit[0][1] * j + fit[0][2]
 
         out_arr = arr - trend
+
+        out_arr[arr==src.nodata] = src.nodata
 
         return out_arr
 
