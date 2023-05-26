@@ -237,7 +237,6 @@ class VBET:
         y_grad = convolve2d(arr, y, mode='same', boundary='fill', fillvalue=1)
         slope = np.arctan(np.sqrt(x_grad ** 2 + y_grad ** 2)) * (180. / np.pi)
         slope[np.isnan(slope)] = src.nodata
-        slope = slope.astype(src.dtypes[0])
 
         return slope
 
@@ -288,7 +287,7 @@ class VBET:
         A = np.array(tmp_A)
         fit = lstsq(A, b)
 
-        trend = np.full((src.height, src.width), src.nodata, dtype=src.dtypes[0])
+        trend = np.full((src.height, src.width), src.nodata)
         for j in range(trend.shape[0]):
             for i in range(trend.shape[1]):
                 trend[j, i] = fit[0][0] * i + fit[0][1] * j + fit[0][2]
