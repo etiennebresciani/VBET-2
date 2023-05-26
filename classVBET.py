@@ -1,5 +1,6 @@
 # imports
 import geopandas as gpd
+import pandas as pd
 import rasterio
 import rasterio.mask
 from rasterio.features import shapes
@@ -14,6 +15,7 @@ import json
 import os.path
 from tqdm import tqdm
 from datetime import datetime
+import itertools
 
 
 class VBET:
@@ -145,6 +147,8 @@ class VBET:
 
         network_geom = self.network['geometry']
         min_buf = network_geom.buffer(self.min_buf)
+
+        self.polygons_df = gpd.GeoDataFrame()
 
         for x in range(len(min_buf)):
             self.polygons.append(min_buf[x])
@@ -365,12 +369,12 @@ class VBET:
 
         return
 
-    def raster_to_shp(self, array, raster_like):
+    def raster_to_shp(self, array, raster_like, valley_type):
         """
         Convert the 1 values in an array of 1s and NoData to a polygon
         :param array: 2-D array of 1s and NoData
         :param raster_like: a raster from which to take metadata (e.g. spatial reference)
-        :param shp_out: path to store output shapefile
+        :param valley_type: string to be added as attribute to the shape
         :return:
         """
         with rasterio.open(raster_like) as src:
@@ -390,6 +394,9 @@ class VBET:
         else:
             df = gpd.GeoDataFrame.from_features(geoms)
             df.crs = crs
+            df['valley_typ'] = valley_type # 10 characters maximum
+            df = df.drop(columns='raster_val')
+            self.polygons_df = pd.concat([self.polygons_df, df])
             geom = df['geometry']
 
             area = []
@@ -466,10 +473,13 @@ class VBET:
 
             if da >= self.lg_da:
                 slope_sub = self.reclassify(slope, ndval, self.lg_slope)
+                valley_type = 'large'
             elif self.lg_da > da >= self.med_da:
                 slope_sub = self.reclassify(slope, ndval, self.med_slope)
+                valley_type = 'medium'
             else:
                 slope_sub = self.reclassify(slope, ndval, self.sm_slope)
+                valley_type = 'small'
 
             # set thresholds for hole filling
             avlen = int(self.seglengths / len(self.network))
@@ -493,7 +503,7 @@ class VBET:
             overlap = self.raster_overlap(slope_sub, depth, ndval)
             if 1 in overlap:
                 filled = self.fill_raster_holes(overlap, thresh, ndval)
-                a = self.raster_to_shp(filled, dem)
+                a = self.raster_to_shp(filled, dem, valley_type)
                 self.network.loc[i, 'fp_area'] = a
             else:
                 self.network.loc[i, 'fp_area'] = 0
@@ -502,65 +512,97 @@ class VBET:
 
         self.network.to_file(self.streams)
 
-        # merge all polygons in folder and dissolve
-        print("Merging valley bottom segments")
-        vb = gpd.GeoSeries(unary_union(self.polygons))  #
-        vb.crs = self.crs_out
-        vb.to_file(self.scratch + "/tempvb.shp")
-        del vb
+        # merge and simplify polygons for each valley type
+        e = sorted(self.polygons_df.iterrows(), key=lambda k: k[1]['valley_typ'], reverse=True)
+        pg = {}
+        dissolve_done = False
+        for key, group in itertools.groupby(e, key=lambda k: k[1]['valley_typ']):
+            geom = [feature[1]['geometry'] for feature in group]
 
-        # simplify and smooth polygon
-        print("Cleaning valley bottom")
-        vbc = gpd.read_file(self.scratch + "/tempvb.shp")
-        vbc = vbc.simplify(3, preserve_topology=True)  # make number a function of dem resolution
-        vbc.to_file(self.scratch + "/tempvb.shp")
-        del vbc
+            # temp file path
+            tmpfile = self.scratch + "/tempvb_" + key + ".shp"
 
-        # multipart to single part
-        vb1 = gpd.read_file(self.scratch + "/tempvb.shp")
-        vbm2s = vb1.explode(ignore_index=True)
-        vbm2s.to_file(self.scratch + "/tempvb.shp")
-        del vb1
+            # merge
+            vb = gpd.GeoSeries(unary_union(geom))
+            vb.crs = self.crs_out
+            vb.to_file(tmpfile)
+            del vb
 
-        # get rid of polygons that do not intersect stream network
-        remove_no_intersect = False
-        if remove_no_intersect:
-            self.network.to_file(self.scratch + "/dissnetwork.shp")
-            network2 = gpd.read_file(self.scratch + "/dissnetwork.shp")
-            network2['dissolve'] = 1
-            network2 = network2.dissolve('dissolve')            
-            print('Removing valley bottom features that do not intersect stream network')
-            print('Started with {} valley bottom features'.format(len(vbm2s)))
-            sub = []
-            for i in vbm2s.index:
-                segs = 0
-                for j in network2.index:
-                    if network2.loc[j].geometry.intersects(vbm2s.loc[i].geometry):
-                        segs += 1
-                if segs > 0:
-                    sub.append(True)
-                else:
-                    sub.append(False)
+            # simplify and smooth polygon
+            print("Cleaning valley bottom ({} valleys)".format(key))
+            vbc = gpd.read_file(tmpfile)
+            vbc = vbc.simplify(min(res_x, res_y)/10, preserve_topology=True)
+            vbc.to_file(tmpfile)
+            del vbc
 
-            vb2 = vbm2s[sub].reset_index(drop=True)
-            vb2.to_file(self.scratch + "/tempvb.shp")
-            print('Cleaned to {} valley bottom features'.format(len(vb2)))
-        else:
-            vb2 = vbm2s
-        del vbm2s
+            # multipart to single part
+            vb1 = gpd.read_file(tmpfile)
+            vbm2s = vb1.explode(ignore_index=True)
+            vbm2s.to_file(tmpfile)
+            del vb1
 
-        polys = []
-        for i in vb2.index:
-            coords = list(vb2.loc[i].geometry.exterior.coords)  # vb2 WAS vbc when using shapely simplify.
-            new_coords = self.chaikins_corner_cutting(coords)
-            polys.append(Polygon(new_coords))
+            # get rid of polygons that do not intersect stream network
+            remove_no_intersect = False
+            if remove_no_intersect:
+                if not dissolve_done:
+                    self.network.to_file(self.scratch + "/dissnetwork.shp")
+                    network2 = gpd.read_file(self.scratch + "/dissnetwork.shp")
+                    network2['dissolve'] = 1
+                    network2 = network2.dissolve('dissolve')
+                    dissolve_done = True
+                print('Removing valley bottom features that do not intersect stream network')
+                print('Started with {} valley bottom features'.format(len(vbm2s)))
+                sub = []
+                for i in vbm2s.index:
+                    segs = 0
+                    for j in network2.index:
+                        if network2.loc[j].geometry.intersects(vbm2s.loc[i].geometry):
+                            segs += 1
+                    if segs > 0:
+                        sub.append(True)
+                    else:
+                        sub.append(False)
 
-        if len(polys) > 1:
-            p = MultiPolygon(polys)
-        else:
-            p = polys[0]
+                vb2 = vbm2s[sub].reset_index(drop=True)
+                vb2.to_file(tmpfile)
+                print('Cleaned to {} valley bottom features'.format(len(vb2)))
+            else:
+                vb2 = vbm2s
+            del vbm2s
 
-        vbf = gpd.GeoDataFrame(index=[0], crs=self.crs_out, geometry=[p])
+            polys = []
+            for i in vb2.index:
+                coords = list(vb2.loc[i].geometry.exterior.coords)  # vb2 WAS vbc when using shapely simplify.
+                new_coords = self.chaikins_corner_cutting(coords)
+                polys.append(Polygon(new_coords))
+
+            if len(polys) > 1:
+                p = MultiPolygon(polys)
+            else:
+                p = polys[0]
+
+            pg[key] = p.simplify(min(res_x, res_y)/10, preserve_topology=True)
+
+        # remove overlaps between the 3 polygons
+        print('Removing overlap between features of different valley types')
+        pg_keys = list(pg.keys())
+        for i in range(len(pg_keys) - 1):
+            # buffer trick to avoid creation of narrow polygons of smaller group aside those of the larger group
+            if pg_keys[i] == 'small':
+                buf_size = self.sm_buf
+            elif pg_keys[i] == 'medium':
+                buf_size = self.med_buf
+            else:
+                print('Error')
+            for j in range(i+1, len(pg_keys)):
+                pg_buf = pg[pg_keys[j]].buffer(buf_size)
+                pg[pg_keys[i]] = pg[pg_keys[i]].buffer(0) # solve self-intersection issue that may occur
+                pg_inters = pg_buf.intersection(pg[pg_keys[i]])
+                pg[pg_keys[j]] = pg[pg_keys[j]].union(pg_inters)
+                pg[pg_keys[i]] = pg[pg_keys[i]].difference(pg[pg_keys[j]])
+
+        pg_values = list(pg.values())
+        vbf = gpd.GeoDataFrame(crs=self.crs_out, geometry=pg_values, data={'valley_typ': pg_keys})
         vbf = vbf.explode(ignore_index=True)
         areas = []
         for i in vbf.index:
