@@ -200,12 +200,13 @@ class VBET:
         for i in self.network.index:
             seg = self.network.loc[i]
             geom = seg['geometry']
-            pos = int(len(geom.coords.xy[0])/2)
-            mid_pt_x = geom.coords.xy[0][pos]
-            mid_pt_y = geom.coords.xy[1][pos]
 
-            pt = Point(mid_pt_x, mid_pt_y)
-            buf = pt.buffer(10*res)
+            x = geom.coords.xy[0]
+            y = geom.coords.xy[1]
+            pos = int(len(geom.coords.xy[0])/10) # 10% of line length
+            pts_shorter = [[x[k], y[k]] for k in range(pos, len(x)-pos)]
+            line_shorter = LineString(pts_shorter)
+            buf = line_shorter.buffer(res)
 
             zs = zonal_stats(buf, self.dr_area, stats='max')
             da_val = zs[0].get('max')
